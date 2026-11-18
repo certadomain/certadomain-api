@@ -1,0 +1,1523 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Certadomain API",
+    "version": "1.0.0",
+    "summary": "Registration-free, DNS-only domain security checks.",
+    "description": "JSON API behind https://certadomain.com. No API key. Every analysis is DNS / registry / CT data only; target web pages are never fetched.\n\n**Rate limit.** 60 units per 5 minutes per client IP (fixed window). Most calls cost 1, `takeover` and `lookalike` cost 5. Every response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (seconds until the window ends); 429 adds `Retry-After`. An edge rate limit of 100 requests per 5 minutes per IP also applies.\n\n**Errors.** 4xx/5xx bodies are `application/problem+json` (RFC 9457) with a stable `error` code. The exception is 404, whose body is replaced by an HTML page at the CDN; use the status code.\n\n**Caching.** Results are stored per domain (about 1 hour; CT 2 hours); `cached` and `analyzed_at` say which you got. There is no way to force a refresh.\n\n**Compatibility.** Within /v1, fields are only added, never removed or renamed; ignore unknown properties. Scores and grades are a prioritization aid and their weighting may change - rely on `findings[].code` for decisions.\n\n**Browsers.** CORS allows only https://certadomain.com. Call the API from your server, not from another site's page.",
+    "license": {
+      "name": "Free to use within the rate limit"
+    },
+    "contact": {
+      "url": "https://certadomain.com/contact.html"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://certadomain.com/api/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Analysis"
+    },
+    {
+      "name": "Discovery"
+    },
+    {
+      "name": "Reports"
+    },
+    {
+      "name": "Meta"
+    }
+  ],
+  "paths": {
+    "/overview": {
+      "get": {
+        "operationId": "getOverview",
+        "tags": [
+          "Analysis"
+        ],
+        "summary": "Combined domain score",
+        "description": "Email authentication (60%), DNS health (25%) and registration (15%) in one 0-100 score with an A-E grade and up to 6 prioritized actions. Counts as 1 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/dnshealth": {
+      "get": {
+        "operationId": "getDnsHealth",
+        "tags": [
+          "Analysis"
+        ],
+        "summary": "DNS health",
+        "description": "Nameserver redundancy and authoritative answers, SOA / delegation consistency, DNSSEC, CAA and MX resolution. Counts as 1 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DnsHealth"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/dmarc": {
+      "get": {
+        "operationId": "getDmarc",
+        "tags": [
+          "Analysis"
+        ],
+        "summary": "SPF / DMARC / DKIM / MX analysis",
+        "description": "RFC-compliant lookup with organization-domain inheritance and a recursive SPF 10-lookup count. Counts as 1 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dmarc"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postDmarc",
+        "tags": [
+          "Analysis"
+        ],
+        "summary": "Same as GET, with a JSON body",
+        "description": "Accepts `{\"domain\": \"example.com\"}` (the legacy `url` key is also read). Counts as 1 against the rate limit.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "domain"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dmarc"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/phishing": {
+      "get": {
+        "operationId": "getPhishing",
+        "tags": [
+          "Analysis"
+        ],
+        "summary": "Phishing heuristics",
+        "description": "Scores domain-name patterns, DNS signals and registration age. A heuristic, not a verdict from a blocklist. Counts as 1 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Phishing"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/subdomains": {
+      "get": {
+        "operationId": "getSubdomains",
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Subdomains from Certificate Transparency",
+        "description": "Merges crt.sh and certspotter. Only names that ever had a TLS certificate appear, and entries may be stale. Counts as 1 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subdomains"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "502": {
+            "description": "Both Certificate Transparency sources failed (error `ct_unavailable`). Retry later.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/takeover": {
+      "get": {
+        "operationId": "getTakeover",
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Dangling-CNAME scan",
+        "description": "DNS-only scan of up to 100 CT-discovered subdomains; no page is ever fetched. Can take 10+ seconds. Counts as 5 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Takeover"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "502": {
+            "description": "Both Certificate Transparency sources failed (error `ct_unavailable`). Retry later.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lookalike": {
+      "get": {
+        "operationId": "getLookalike",
+        "tags": [
+          "Discovery"
+        ],
+        "summary": "Registered lookalike domains",
+        "description": "Generates up to 220 typosquatting / homograph candidates and reports the registered ones, ranked by abuse risk. Takes 4-6 seconds. Counts as 5 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lookalike"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/reports": {
+      "post": {
+        "operationId": "createReport",
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Store a shareable copy of a result",
+        "description": "The server re-reads the result itself (the content cannot be supplied), stores it for 30 days and returns an unguessable id. Limited to 20 creations per 5 minutes per IP and a global daily ceiling (429 `report_limit`). Counts as 1 against the API rate limit.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportCreated"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The result is over 350 KB (`report_too_large`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The underlying check failed.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Storage is unavailable (`storage_unavailable`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/reports/{id}": {
+      "get": {
+        "operationId": "getReport",
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Read a stored report",
+        "description": "Returns the stored document, or 404 once it has expired. Reads do not count against the report limit.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{10,16}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or expired. Status code only: the CDN replaces this response's body with the site's HTML page, so do not parse it.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "tags": [
+          "Meta"
+        ],
+        "summary": "This document",
+        "description": "Not rate limited.",
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "operationId": "getIndex",
+        "tags": [
+          "Meta"
+        ],
+        "summary": "API index",
+        "description": "Links to the spec and docs. Not rate limited.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Index"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Finding": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "dmarc, spf, dkim, mx, ns, dnssec, caa, registration ..."
+          },
+          "code": {
+            "type": "string",
+            "description": "Stable machine-readable finding code, e.g. SPF_LOOKUP_EXCEEDED. Documented in the site glossary."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "critical",
+              "warning",
+              "info",
+              "ok"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "description": "Values the message for this code needs (counts, hosts, dates).",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "code",
+          "severity"
+        ]
+      },
+      "Registration": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "rdap, jprs-whois or similar; absent data means the TLD publishes none."
+          },
+          "registered": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Registration date, YYYY-MM-DD."
+          },
+          "changed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registrar": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "age_days": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "days_to_expiry": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "locked": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Transfer lock; null when the registry status is not conclusive."
+          },
+          "dnssec": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Registry delegationSigned flag (data only; see DnsHealth.dnssec for behaviour)."
+          }
+        }
+      },
+      "Overview": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "target": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "grade": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          },
+          "email": {
+            "type": "object",
+            "properties": {
+              "score": {
+                "type": "integer"
+              },
+              "grade": {
+                "type": "string",
+                "enum": [
+                  "protected",
+                  "partial",
+                  "monitoring",
+                  "unprotected"
+                ]
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Finding"
+                }
+              },
+              "records": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "spf_lookups": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "limit": {
+                    "type": "integer"
+                  },
+                  "voids": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "dns": {
+            "type": "object",
+            "properties": {
+              "score": {
+                "type": "integer"
+              },
+              "zone": {
+                "type": "string"
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Finding"
+                }
+              },
+              "nameservers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "host": {
+                      "type": "string"
+                    },
+                    "ipv4": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "ipv6": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "ok, lame, timeout, unresolved, private, unchecked ..."
+                    },
+                    "serial": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "description": "SOA serial as answered by this server."
+                    }
+                  }
+                }
+              },
+              "dnssec": {
+                "type": "string"
+              }
+            }
+          },
+          "registration": {
+            "type": "object",
+            "properties": {
+              "score": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "data": {
+                "$ref": "#/components/schemas/Registration"
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Finding"
+                }
+              }
+            }
+          },
+          "actions": {
+            "type": "array",
+            "description": "Up to 6 prioritized findings, critical first.",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "score",
+          "grade",
+          "analyzed_at",
+          "cached"
+        ]
+      },
+      "DnsHealth": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "zone": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "grade": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E"
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          },
+          "nameservers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "ipv4": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "ipv6": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "status": {
+                  "type": "string",
+                  "description": "ok, lame, timeout, unresolved, private, unchecked ..."
+                },
+                "serial": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "SOA serial as answered by this server."
+                }
+              }
+            }
+          },
+          "dnssec": {
+            "type": "string",
+            "description": "valid, off, broken, unverified ..."
+          },
+          "caa_issuers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "score",
+          "grade",
+          "analyzed_at",
+          "cached"
+        ]
+      },
+      "Dmarc": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "grade": {
+                "type": "string",
+                "enum": [
+                  "protected",
+                  "partial",
+                  "monitoring",
+                  "unprotected"
+                ]
+              }
+            }
+          },
+          "records": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "dmarc, spf, dkim (selector -> found), mx."
+          },
+          "spf_lookups": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "voids": {
+                "type": "integer"
+              }
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "summary",
+          "findings",
+          "analyzed_at",
+          "cached"
+        ]
+      },
+      "Phishing": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "registration": {
+            "$ref": "#/components/schemas/Registration"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "verdict",
+          "score",
+          "analyzed_at",
+          "cached"
+        ]
+      },
+      "Subdomains": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "subdomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "crt.sh",
+                "certspotter"
+              ]
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "subdomains",
+          "count",
+          "sources"
+        ],
+        "description": "Certificate Transparency results are cached for 2 hours; this tool does not return analyzed_at / cached."
+      },
+      "Takeover": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "total": {
+            "type": "integer"
+          },
+          "scanned": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "critical": {
+                "type": "integer"
+              },
+              "warning": {
+                "type": "integer"
+              },
+              "info": {
+                "type": "integer"
+              }
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "summary",
+          "findings",
+          "analyzed_at",
+          "cached"
+        ]
+      },
+      "Lookalike": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "target": {
+            "type": "string"
+          },
+          "generated": {
+            "type": "integer"
+          },
+          "scanned": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "registered": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "high": {
+                "type": "integer"
+              },
+              "medium": {
+                "type": "integer"
+              },
+              "low": {
+                "type": "integer"
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string"
+                },
+                "display": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "HOMOGLYPH, IDN_HOMOGRAPH, TLD_SWAP, KEYWORD, OMISSION ..."
+                },
+                "mx": {
+                  "type": "boolean"
+                },
+                "web": {
+                  "type": "boolean"
+                },
+                "ns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "same_ns": {
+                  "type": "boolean"
+                },
+                "registered": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "registrar": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "age_days": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "risk": {
+                  "type": "string",
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                },
+                "signals": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "domain",
+          "summary",
+          "items",
+          "analyzed_at",
+          "cached"
+        ]
+      },
+      "ReportRequest": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string",
+            "enum": [
+              "overview",
+              "dmarc",
+              "phishing",
+              "subdomains",
+              "takeover",
+              "lookalike",
+              "dnshealth"
+            ]
+          },
+          "domain": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "domain"
+        ],
+        "additionalProperties": false
+      },
+      "ReportCreated": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unguessable id; anyone who has it can read the report."
+          },
+          "tool": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "tool",
+          "domain",
+          "created_at",
+          "expires_at"
+        ]
+      },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "integer"
+          },
+          "result": {
+            "type": "object",
+            "description": "The stored result, in the shape of the tool's own response.",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "tool",
+          "domain",
+          "created_at",
+          "expires_at",
+          "result"
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "urn:certadomain:problem:<error>"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string",
+            "description": "Stable error code; same value as the last part of type."
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "error"
+        ],
+        "description": "RFC 9457 problem details."
+      },
+      "Index": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "openapi": {
+            "type": "string"
+          },
+          "docs": {
+            "type": "string"
+          },
+          "endpoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "parameters": {
+      "domain": {
+        "name": "domain",
+        "in": "query",
+        "required": true,
+        "description": "A domain or host name. A URL is reduced to its host; internationalized names are converted to punycode.",
+        "schema": {
+          "type": "string"
+        },
+        "example": "example.com"
+      }
+    },
+    "headers": {
+      "RateLimit-Limit": {
+        "description": "Units allowed per window.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "RateLimit-Remaining": {
+        "description": "Units left in the current window.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "RateLimit-Reset": {
+        "description": "Seconds until the window resets.",
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Missing or invalid input: `missing_domain`, `invalid_domain`, `invalid_json`, `invalid_tool`, `invalid_id`.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Rate limit reached (`rate_limited`) or the report ceiling was hit (`report_limit`).",
+        "headers": {
+          "RateLimit-Limit": {
+            "$ref": "#/components/headers/RateLimit-Limit"
+          },
+          "RateLimit-Remaining": {
+            "$ref": "#/components/headers/RateLimit-Remaining"
+          },
+          "RateLimit-Reset": {
+            "$ref": "#/components/headers/RateLimit-Reset"
+          },
+          "Retry-After": {
+            "description": "Seconds to wait.",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "ServerError": {
+        "description": "Unexpected failure (`server_error`).",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    }
+  }
+}
