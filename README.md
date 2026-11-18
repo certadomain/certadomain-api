@@ -5,6 +5,7 @@ registration-free, DNS-only domain security checks (SPF / DMARC / DKIM, DNS heal
 phishing heuristics, Certificate Transparency subdomains, dangling CNAMEs and lookalike domains).
 
 - **Docs:** https://certadomain.com/api-docs.html
+- **Interactive reference (Swagger UI):** https://certadomain.github.io/certadomain-api/
 - **Spec:** [`openapi.json`](openapi.json) (OpenAPI 3.1), also served live at
   https://certadomain.com/api/v1/openapi.json
 - **No API key.** Target web pages are never fetched; every check uses DNS, registry and CT data only.

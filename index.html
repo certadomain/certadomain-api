@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Certadomain API</title>
+  <meta name="description" content="OpenAPI reference for the Certadomain API: registration-free, DNS-only domain security checks.">
+  <link rel="canonical" href="https://certadomain.com/api-docs.html">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css"
+        integrity="sha384-wxLW6kwyHktdDGr6Pv1zgm/VGJh99lfUbzSn6HNHBENZlCN7W602k9VkGdxuFvPn" crossorigin="anonymous">
+  <style>
+    body { margin: 0; background: #fff; }
+    .note { margin: 0; padding: 10px 16px; font: 14px/1.5 system-ui, sans-serif; background: #f3f6f9; border-bottom: 1px solid #dde3e9; color: #333; }
+    .note a { color: #0b5cad; }
+  </style>
+</head>
+<body>
+  <p class="note">
+    Reference for <code>https://certadomain.com/api/v1</code>. No API key needed.
+    Call the API from your server or a script (CORS allows only certadomain.com) &mdash;
+    see the <a href="https://github.com/certadomain/certadomain-api#examples">curl and Python examples</a>
+    or the <a href="https://certadomain.com/api-docs.html">full guide</a>.
+  </p>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"
+          integrity="sha384-wmyclcVGX/WhUkdkATwhaK1X1JtiNrr2EoYJ+diV3vj4v6OC5yCeSu+yW13SYJep" crossorigin="anonymous"></script>
+  <script>
+    window.ui = SwaggerUIBundle({
+      url: "openapi.json",
+      dom_id: "#swagger-ui",
+      deepLinking: true,
+      docExpansion: "list",
+      defaultModelsExpandDepth: 0,
+      // The API only allows CORS from certadomain.com, so "Try it out" cannot work from this page.
+      supportedSubmitMethods: []
+    });
+  </script>
+</body>
+</html>
