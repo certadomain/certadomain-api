@@ -2,13 +2,16 @@
 
 OpenAPI specification and sample clients for the [Certadomain](https://certadomain.com) API:
 registration-free, DNS-only domain security checks (SPF / DMARC / DKIM, DNS health,
-phishing heuristics, Certificate Transparency subdomains, dangling CNAMEs and lookalike domains).
+phishing heuristics, Certificate Transparency subdomains, dangling CNAMEs, lookalike domains
+and SSL/TLS certificates).
 
 - **Docs:** https://certadomain.com/api-docs.html
 - **Interactive reference (Swagger UI):** https://certadomain.github.io/certadomain-api/
 - **Spec:** [`openapi.json`](openapi.json) (OpenAPI 3.1), also served live at
   https://certadomain.com/api/v1/openapi.json
-- **No API key.** Target web pages are never fetched; every check uses DNS, registry and CT data only.
+- **No API key.** Target web pages are never fetched; every check uses DNS, registry and CT data only,
+  except `/tls`, which makes ordinary HTTPS handshakes to port 443.
+- **MCP server:** [certadomain-mcp](https://github.com/certadomain/certadomain-mcp) lets AI assistants call these checks.
 
 ## Endpoints
 
@@ -23,7 +26,8 @@ Base URL: `https://certadomain.com/api/v1`
 | `GET /subdomains?domain=` | Subdomains seen in Certificate Transparency logs | 1 |
 | `GET /takeover?domain=` | DNS-only dangling-CNAME scan of CT subdomains | 5 |
 | `GET /lookalike?domain=` | Registered typosquatting / homograph domains | 5 |
-| `POST /reports` / `GET /reports/{id}` | Store and read a shareable result (30 days) | 1 |
+| `GET /tls?domain=` | Certificate expiry/chain/key, TLS versions, HSTS, MTA-STS | 2 |
+| `POST /reports` / `GET /reports/{id}` | Store and read a shareable result (30 days); creation returns the share page `url` | 1 |
 
 ## Quick start
 

@@ -4,7 +4,7 @@
     "title": "Certadomain API",
     "version": "1.0.0",
     "summary": "Registration-free, DNS-only domain security checks.",
-    "description": "JSON API behind https://certadomain.com. No API key. Every analysis is DNS / registry / CT data only; target web pages are never fetched.\n\n**Rate limit.** 60 units per 5 minutes per client IP (fixed window). Most calls cost 1, `takeover` and `lookalike` cost 5. Every response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (seconds until the window ends); 429 adds `Retry-After`. An edge rate limit of 100 requests per 5 minutes per IP also applies.\n\n**Errors.** 4xx/5xx bodies are `application/problem+json` (RFC 9457) with a stable `error` code. The exception is 404, whose body is replaced by an HTML page at the CDN; use the status code.\n\n**Caching.** Results are stored per domain (about 1 hour; CT 2 hours); `cached` and `analyzed_at` say which you got. There is no way to force a refresh.\n\n**Compatibility.** Within /v1, fields are only added, never removed or renamed; ignore unknown properties. Scores and grades are a prioritization aid and their weighting may change - rely on `findings[].code` for decisions.\n\n**Browsers.** CORS allows only https://certadomain.com. Call the API from your server, not from another site's page.",
+    "description": "JSON API behind https://certadomain.com. No API key. Every analysis is DNS / registry / CT data only, except `tls`, which makes ordinary HTTPS connections to port 443 of the domain's web hosts; target web pages are never fetched.\n\n**Rate limit.** 60 units per 5 minutes per client IP (fixed window). Most calls cost 1, `tls` costs 2, `takeover` and `lookalike` cost 5. Every response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (seconds until the window ends); 429 adds `Retry-After`. An edge rate limit of 100 requests per 5 minutes per IP also applies.\n\n**Errors.** 4xx/5xx bodies are `application/problem+json` (RFC 9457) with a stable `error` code. The exception is 404 (unknown path, or an id that is not stored), whose body is replaced by an HTML page at the CDN; use the status code. An expired report is a 410 with a normal problem body.\n\n**Caching.** Results are stored per domain (about 1 hour; CT 2 hours); `cached` and `analyzed_at` say which you got. There is no way to force a refresh.\n\n**Compatibility.** Within /v1, fields are only added, never removed or renamed; ignore unknown properties. Scores and grades are a prioritization aid and their weighting may change - rely on `findings[].code` for decisions.\n\n**Browsers.** CORS allows only https://certadomain.com. Call the API from your server, not from another site's page.",
     "license": {
       "name": "Free to use within the rate limit"
     },
@@ -439,6 +439,56 @@
         }
       }
     },
+    "/tls": {
+      "get": {
+        "operationId": "getTls",
+        "tags": [
+          "Analysis"
+        ],
+        "summary": "SSL/TLS certificate",
+        "description": "Connects to port 443 of <domain>, www.<domain> and mta-sts.<domain> (when MTA-STS is published) from AWS Tokyo and checks the certificate (expiry, name, chain, key, signature, CAA), TLS 1.3 / 1.0 / 1.1 support, HSTS and the MTA-STS policy. Ordinary HTTPS handshakes only (at most 5 per host); redirects are not followed. A host may be unreachable from AWS only. Counts as 2 against the rate limit.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/domain"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "RateLimit-Limit": {
+                "$ref": "#/components/headers/RateLimit-Limit"
+              },
+              "RateLimit-Remaining": {
+                "$ref": "#/components/headers/RateLimit-Remaining"
+              },
+              "RateLimit-Reset": {
+                "$ref": "#/components/headers/RateLimit-Reset"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tls"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          },
+          "503": {
+            "description": "The TLS check is busy (it runs with little concurrency, apart from the other endpoints). Sent by API Gateway, so the body is not problem details. Retry after a few seconds."
+          }
+        }
+      }
+    },
     "/reports": {
       "post": {
         "operationId": "createReport",
@@ -528,7 +578,7 @@
           "Reports"
         ],
         "summary": "Read a stored report",
-        "description": "Returns the stored document, or 404 once it has expired. Reads do not count against the report limit.",
+        "description": "Returns the stored document. Reads do not count against the report limit. A report that has passed its 30 days answers 410 `report_expired` for as long as the stored item still exists (storage removes expired items within about 2 days); after that the id answers 404, the same as one that never existed.",
         "parameters": [
           {
             "name": "id",
@@ -563,11 +613,21 @@
             }
           },
           "404": {
-            "description": "Not found or expired. Status code only: the CDN replaces this response's body with the site's HTML page, so do not parse it.",
+            "description": "No report with this id: never created, or already purged after it expired. Use the status code only: the CDN replaces this response's body with the site's HTML page, so do not parse it.",
             "content": {
               "text/html": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The report passed its 30-day retention (`report_expired`).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -845,6 +905,24 @@
                   }
                 }
               },
+              "mail_servers": {
+                "type": "array",
+                "description": "MX hosts (up to 5) and their IPv4 addresses.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "host": {
+                      "type": "string"
+                    },
+                    "ipv4": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
               "dnssec": {
                 "type": "string"
               }
@@ -955,6 +1033,24 @@
                     "null"
                   ],
                   "description": "SOA serial as answered by this server."
+                }
+              }
+            }
+          },
+          "mail_servers": {
+            "type": "array",
+            "description": "MX hosts (up to 5) and their IPv4 addresses.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "ipv4": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -1071,6 +1167,24 @@
           "registration": {
             "$ref": "#/components/schemas/Registration"
           },
+          "web": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Public IPv4 addresses (up to 4) the domain's web site resolves to: the domain's own A records, else www.<domain>'s. Display only.",
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "ipv4": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
           "findings": {
             "type": "array",
             "items": {
@@ -1110,6 +1224,13 @@
                 "certspotter"
               ]
             }
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to 100 of the subdomains, newest certificate expiry first: names still being issued certificates are more likely to be in use."
           }
         },
         "required": [
@@ -1303,6 +1424,215 @@
           "cached"
         ]
       },
+      "Tls": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "The normalized domain that was analysed (lower case, punycode)."
+          },
+          "analyzed_at": {
+            "type": "integer",
+            "description": "Unix time the analysis ran; with cached=true this is when it ran, not when it was served."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "True when this is a stored result (up to one hour old for most tools)."
+          },
+          "hosts": {
+            "type": "array",
+            "description": "<domain>, www.<domain> and, when _mta-sts.<domain> has v=STSv1, mta-sts.<domain>. A host with no address is left out (except the domain itself).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "ip": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The public IPv4 that was connected to (port 443)."
+                },
+                "reachable": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "verified": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "The certificate passed verification for this host name."
+                },
+                "tls_version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cipher": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "certificate": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "subject_cn": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "san": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "issuer": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "issuer_org": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "not_before": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "not_after": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "lifetime_days": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "days_left": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "key": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "e.g. RSA 2048, EC P-256"
+                    },
+                    "signature": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "e.g. sha256WithRSAEncryption"
+                    }
+                  }
+                },
+                "hsts": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "present": {
+                      "type": "boolean"
+                    },
+                    "max_age": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "skipped": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Steps left out when the 10-second budget ran out: handshake, certificate, http, caa, tls13, legacy, timeout."
+                },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Finding"
+                  }
+                }
+              }
+            }
+          },
+          "mta_sts": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string"
+              },
+              "mx": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "max_age": {
+                "type": "integer"
+              }
+            }
+          },
+          "caa_issuers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "CAA issue values that apply to the domain; null when not looked up."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "description": "All hosts' findings; params.host names the host."
+          },
+          "legacy_checked": {
+            "type": "boolean",
+            "description": "Whether TLS 1.0 / 1.1 support was tested."
+          }
+        },
+        "required": [
+          "domain",
+          "hosts",
+          "findings",
+          "analyzed_at",
+          "cached"
+        ]
+      },
       "ReportRequest": {
         "type": "object",
         "properties": {
@@ -1346,6 +1676,16 @@
           },
           "expires_at": {
             "type": "integer"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Shareable page for this report (Japanese site)."
+          },
+          "url_en": {
+            "type": "string",
+            "format": "uri",
+            "description": "Shareable page for this report (English site)."
           }
         },
         "required": [
@@ -1353,7 +1693,9 @@
           "tool",
           "domain",
           "created_at",
-          "expires_at"
+          "expires_at",
+          "url",
+          "url_en"
         ]
       },
       "Report": {
@@ -1404,6 +1746,11 @@
           "error": {
             "type": "string",
             "description": "Stable error code; same value as the last part of type."
+          },
+          "see": {
+            "type": "string",
+            "format": "uri",
+            "description": "Related page. On `rate_limited`: the pricing page for higher limits."
           }
         },
         "required": [
